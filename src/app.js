@@ -13,6 +13,7 @@ const state = {
   keyId: "C-major",
   meter: "4/4",
   selectedStyle: "pop",
+  texture: "arpeggio",
   currentDuration: "quarter",
   dotted: false,
   cursorAbsTick: 0,
@@ -37,7 +38,7 @@ function init() {
 }
 
 function bindElements() {
-  for (const id of ["key", "meter", "style", "generate", "play", "stop", "undo", "delete", "clear", "editor", "durations", "keyboard", "dotted", "rest", "message", "replacementPanel", "replacementTitle", "replacementOptions"]) {
+  for (const id of ["key", "meter", "style", "texture", "generate", "play", "stop", "undo", "delete", "clear", "editor", "durations", "keyboard", "dotted", "rest", "message", "replacementPanel", "replacementTitle", "replacementOptions"]) {
     els[id] = document.getElementById(id);
   }
 }
@@ -47,6 +48,7 @@ function renderSelectors() {
   els.key.value = state.keyId;
   els.meter.value = state.meter;
   els.style.value = state.selectedStyle;
+  els.texture.value = state.texture;
 }
 
 function bindToolbar() {
@@ -63,6 +65,9 @@ function bindToolbar() {
   els.style.addEventListener("change", () => {
     state.selectedStyle = els.style.value;
     render();
+  });
+  els.texture.addEventListener("change", () => {
+    state.texture = els.texture.value;
   });
   els.generate.addEventListener("click", generate);
   els.play.addEventListener("click", () => player.playSong(state));
@@ -183,6 +188,7 @@ function generate() {
 function render() {
   renderDurationState();
   els.style.value = state.selectedStyle;
+  els.texture.value = state.texture;
   els.message.textContent = state.message;
   renderEditor();
 }
@@ -224,6 +230,7 @@ function renderEvent(event, meter) {
 document.addEventListener("click", (event) => {
   const chordButton = event.target.closest(".chord-pill");
   if (!chordButton) return;
+  player.previewChord(chordButton.dataset.chord);
   openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.chord);
 });
 
@@ -237,7 +244,12 @@ function openReplacements(anchor, bar, tick, chord) {
   els.replacementPanel.style.top = `${rect.bottom + 8}px`;
   els.replacementPanel.hidden = false;
   els.replacementOptions.querySelectorAll("[data-replacement]").forEach((button) => {
-    button.addEventListener("click", () => applyReplacement(button.dataset.replacement));
+    button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement));
+    button.addEventListener("focus", () => player.previewChord(button.dataset.replacement));
+    button.addEventListener("click", () => {
+      player.previewChord(button.dataset.replacement);
+      applyReplacement(button.dataset.replacement);
+    });
   });
 }
 

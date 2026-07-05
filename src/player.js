@@ -23,7 +23,7 @@ export function getInstrumentPreset(name) {
       decay: 0.16,
       sustain: 0.22,
       release: 0.04,
-      gain: 0.044
+      gain: 0.082
     }
   };
   return presets[name] || presets.piano;
@@ -36,18 +36,30 @@ export function createArpeggioEvents(notes, startTick, durationTicks, style = "p
   const step = style === "jazz" ? 1 : 2;
   const events = [];
 
-  events.push({ note: notes[0], tick: startTick, durationTicks: Math.min(durationTicks, 4), gain: 0.052, role: "bass" });
+  events.push({ note: notes[0], tick: startTick, durationTicks: Math.min(durationTicks, 4), gain: 0.095, role: "bass" });
   for (let offset = 0, index = 0; offset < durationTicks; offset += step, index += 1) {
     const note = upper[pattern[index % pattern.length] % upper.length];
     events.push({
       note,
       tick: startTick + offset,
       durationTicks: Math.min(step * 1.8, durationTicks - offset),
-      gain: style === "jazz" ? 0.03 : 0.038,
+      gain: style === "jazz" ? 0.074 : 0.084,
       role: "piano-arp"
     });
   }
   return events;
+}
+
+export function createBlockEvents(notes, startTick, durationTicks) {
+  if (!notes.length || durationTicks <= 0) return [];
+  const length = Math.max(1, Math.min(durationTicks, 8));
+  return notes.slice(0, 5).map((note, index) => ({
+    note,
+    tick: startTick,
+    durationTicks: length,
+    gain: index === 0 ? 0.095 : 0.078,
+    role: index === 0 ? "bass" : "piano-block"
+  }));
 }
 
 export class Player {
@@ -80,6 +92,15 @@ export class Player {
     this.playTone(note, start, 0.22, 0.08, "triangle");
   }
 
+  previewChord(chordSymbol) {
+    const context = this.ensureContext();
+    const start = context.currentTime + 0.02;
+    const notes = chordPitches(chordSymbol, 3);
+    for (const event of createBlockEvents(notes, 0, 6)) {
+      this.playTone(event.note, start, event.durationTicks * SECONDS_PER_TICK, event.gain * 1.25, getInstrumentPreset("piano"));
+    }
+  }
+
   playSong(song) {
     this.stop();
     const context = this.ensureContext();
@@ -101,7 +122,10 @@ export class Player {
       const chordStartTick = absoluteTick(chord.bar, chord.tick, song.meter);
       const durationTicks = Math.max(2, endTick - chordStartTick);
       const notes = chordPitches(chord.chord, 3);
-      for (const event of createArpeggioEvents(notes, chordStartTick, durationTicks, song.selectedStyle)) {
+      const events = song.texture === "block"
+        ? createBlockEvents(notes, chordStartTick, durationTicks)
+        : createArpeggioEvents(notes, chordStartTick, durationTicks, song.selectedStyle);
+      for (const event of events) {
         const eventWhen = start + event.tick * SECONDS_PER_TICK;
         this.playTone(event.note, eventWhen, event.durationTicks * SECONDS_PER_TICK * 0.92, event.gain, getInstrumentPreset("piano"));
       }
