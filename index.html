@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>旋律配和弦</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>旋律配和弦</h1>
+        </div>
+        <label>
+          调性
+          <select id="key"></select>
+        </label>
+        <label>
+          拍号
+          <select id="meter">
+            <option value="4/4">4/4</option>
+            <option value="2/4">2/4</option>
+            <option value="3/4">3/4</option>
+            <option value="3/8">3/8</option>
+          </select>
+        </label>
+        <label>
+          版本
+          <select id="style">
+            <option value="pop">流行版</option>
+            <option value="jazz">爵士色彩版</option>
+          </select>
+        </label>
+        <button id="generate" class="primary">输出和弦</button>
+        <button id="play" title="播放">播放</button>
+        <button id="stop" title="停止">停止</button>
+        <button id="undo" title="撤销">撤销</button>
+        <button id="delete" title="删除最后一个音">删除</button>
+        <button id="clear" title="清空">清空</button>
+      </header>
+
+      <section class="editor-wrap">
+        <div id="editor" class="editor" aria-label="旋律编辑区"></div>
+      </section>
+
+      <section class="input-panel">
+        <div class="duration-group">
+          <span class="panel-label">时值</span>
+          <div id="durations" class="duration-buttons"></div>
+          <button id="dotted" class="dot-button" title="给当前时值加附点">附点</button>
+          <button id="rest" class="rest-button">休止符</button>
+        </div>
+        <div id="keyboard" class="keyboard" aria-label="虚拟钢琴键盘"></div>
+      </section>
+
+      <p id="message" class="message"></p>
+    </main>
+
+    <aside id="replacementPanel" class="replacement-panel" hidden>
+      <h2 id="replacementTitle"></h2>
+      <div id="replacementOptions" class="replacement-options"></div>
+    </aside>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
