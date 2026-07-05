@@ -26,19 +26,29 @@ const FLAT_TO_SHARP = {
 
 export const KEYS = [
   ["C", "major", "C大调"],
-  ["G", "major", "G大调"],
+  ["Db", "major", "Db大调"],
   ["D", "major", "D大调"],
-  ["A", "major", "A大调"],
+  ["Eb", "major", "Eb大调"],
   ["E", "major", "E大调"],
   ["F", "major", "F大调"],
+  ["F#", "major", "F#大调"],
+  ["G", "major", "G大调"],
+  ["Ab", "major", "Ab大调"],
+  ["A", "major", "A大调"],
   ["Bb", "major", "Bb大调"],
-  ["Eb", "major", "Eb大调"],
+  ["B", "major", "B大调"],
   ["A", "minor", "a小调"],
-  ["E", "minor", "e小调"],
+  ["Bb", "minor", "bb小调"],
   ["B", "minor", "b小调"],
+  ["C", "minor", "c小调"],
+  ["C#", "minor", "c#小调"],
   ["D", "minor", "d小调"],
+  ["Eb", "minor", "eb小调"],
+  ["E", "minor", "e小调"],
+  ["F", "minor", "f小调"],
+  ["F#", "minor", "f#小调"],
   ["G", "minor", "g小调"],
-  ["C", "minor", "c小调"]
+  ["G#", "minor", "g#小调"]
 ].map(([tonic, mode, label]) => ({ id: `${tonic}-${mode}`, tonic, mode, label }));
 
 export function normalizeNoteName(name) {
