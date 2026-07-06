@@ -99,9 +99,9 @@ function bindToolbar() {
   });
   els.generate.addEventListener("click", generate);
   els.play.addEventListener("click", async () => {
-    els.play.disabled = true;
     try {
-      await player.unlockAudio();
+      player.unlockAudio();
+      els.play.disabled = true;
       const playback = await player.playSong(state);
       startPlayheadAnimation(playback);
     } catch {
@@ -158,11 +158,11 @@ function renderKeyboard() {
   els.keyboard.addEventListener("click", (event) => {
     const key = event.target.closest("[data-note]");
     if (!key) return;
-    insertNote(key.dataset.note);
     player.preview(key.dataset.note, state.melodyVolume).catch(() => {
       setMessage("手机浏览器没有成功启动音频，请再点一次钢琴键试听。");
       render();
     });
+    insertNote(key.dataset.note);
   });
 }
 

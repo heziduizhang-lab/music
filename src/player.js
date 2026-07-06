@@ -22,13 +22,6 @@ const FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", 
 
 let samplePackPromise = null;
 
-function waitWithTimeout(promise, timeoutMs = 900) {
-  return Promise.race([
-    promise,
-    new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))
-  ]);
-}
-
 export function getInstrumentPreset(name) {
   const presets = {
     clarinet: {
@@ -215,9 +208,9 @@ export class Player {
     return this.context;
   }
 
-  async unlockAudio() {
+  unlockAudio() {
     const context = this.ensureContext();
-    await context.resume?.();
+    context.resume?.();
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = context.createBuffer(1, 1, context.sampleRate);
@@ -325,7 +318,7 @@ export class Player {
   async preview(note, volume = 1) {
     const previewToken = this.beginPreview();
     if (Number(volume) <= 0) return;
-    await this.unlockAudio();
+    this.unlockAudio();
     const context = this.ensureContext();
     if (previewToken !== this.previewToken) return;
     const start = context.currentTime;
@@ -338,7 +331,7 @@ export class Player {
   async previewChord(chordSymbol, volume = 1) {
     const previewToken = this.beginPreview();
     if (Number(volume) <= 0) return;
-    await this.unlockAudio();
+    this.unlockAudio();
     const context = this.ensureContext();
     const start = context.currentTime + 0.02;
     const notes = chordPitches(chordSymbol, 3);
@@ -360,8 +353,8 @@ export class Player {
   async playSong(song) {
     this.stop();
     const context = this.ensureContext();
-    await this.unlockAudio();
-    await waitWithTimeout(this.prepareSong(song), 900);
+    this.unlockAudio();
+    this.prepareSong(song).catch(() => {});
     const start = context.currentTime + 0.18;
     const startAbsTick = Math.max(0, Number(song.playStartAbsTick) || 0);
     const tickSeconds = getTickSeconds(song.speed);
