@@ -1,0 +1,19 @@
+{
+  "name": "旋律配和弦",
+  "short_name": "配和弦",
+  "description": "输入旋律，自动生成流行或爵士色彩和弦。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f0",
+  "theme_color": "#0f766e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
