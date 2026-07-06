@@ -104,6 +104,9 @@ function bindToolbar() {
       await player.unlockAudio();
       const playback = await player.playSong(state);
       startPlayheadAnimation(playback);
+    } catch {
+      setMessage("手机浏览器没有成功启动音频，请先点一下钢琴键，再点播放。");
+      render();
     } finally {
       els.play.disabled = false;
     }
@@ -156,7 +159,10 @@ function renderKeyboard() {
     const key = event.target.closest("[data-note]");
     if (!key) return;
     insertNote(key.dataset.note);
-    player.preview(key.dataset.note, state.melodyVolume);
+    player.preview(key.dataset.note, state.melodyVolume).catch(() => {
+      setMessage("手机浏览器没有成功启动音频，请再点一次钢琴键试听。");
+      render();
+    });
   });
 }
 
@@ -355,7 +361,10 @@ function renderEvent(event, meter) {
 document.addEventListener("click", (event) => {
   const chordButton = event.target.closest(".chord-pill");
   if (!chordButton) return;
-  player.previewChord(chordButton.dataset.chord, state.harmonyVolume);
+  player.previewChord(chordButton.dataset.chord, state.harmonyVolume).catch(() => {
+    setMessage("手机浏览器没有成功启动音频，请先点一下钢琴键。");
+    render();
+  });
   openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.chord, "replace");
 });
 
@@ -376,10 +385,10 @@ function openReplacements(anchor, bar, tick, target, mode = "replace") {
   els.replacementPanel.style.top = `${rect.bottom + 8}px`;
   els.replacementPanel.hidden = false;
   els.replacementOptions.querySelectorAll("[data-replacement]").forEach((button) => {
-    button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement, state.harmonyVolume));
-    button.addEventListener("focus", () => player.previewChord(button.dataset.replacement, state.harmonyVolume));
+    button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {}));
+    button.addEventListener("focus", () => player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {}));
     button.addEventListener("click", () => {
-      player.previewChord(button.dataset.replacement, state.harmonyVolume);
+      player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {});
       applyReplacement(button.dataset.replacement);
     });
   });

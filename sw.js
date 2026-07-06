@@ -1,4 +1,4 @@
-const CACHE_NAME = "melody-harmonizer-v20260706-final-mobile-audio";
+const CACHE_NAME = "melody-harmonizer-v20260707-ios-audio-fallback";
 const ASSETS = [
   "./",
   "./index.html",

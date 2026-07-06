@@ -22,6 +22,13 @@ const FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", 
 
 let samplePackPromise = null;
 
+function waitWithTimeout(promise, timeoutMs = 900) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))
+  ]);
+}
+
 export function getInstrumentPreset(name) {
   const presets = {
     clarinet: {
@@ -202,6 +209,7 @@ export class Player {
   ensureContext() {
     if (!this.context) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) throw new Error("AudioContext is not supported in this browser.");
       this.context = new AudioContextClass();
     }
     return this.context;
@@ -231,10 +239,17 @@ export class Player {
       if (window.MIDI.Soundfont[instrument]) return Promise.resolve(true);
       return new Promise((resolve) => {
         const script = document.createElement("script");
+        const timer = setTimeout(() => resolve(false), 3500);
         script.src = `${SAMPLE_PACK_BASE}/${instrument}-mp3.js`;
         script.async = true;
-        script.onload = () => resolve(Boolean(window.MIDI.Soundfont[instrument]));
-        script.onerror = () => resolve(false);
+        script.onload = () => {
+          clearTimeout(timer);
+          resolve(Boolean(window.MIDI.Soundfont[instrument]));
+        };
+        script.onerror = () => {
+          clearTimeout(timer);
+          resolve(false);
+        };
         document.head.appendChild(script);
       });
     });
@@ -256,7 +271,10 @@ export class Player {
       const entry = this.getSampleEntry(instrument, note);
       if (!entry) return;
       try {
-        const response = await fetch(entry);
+        const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
+        const response = await fetch(entry, controller ? { signal: controller.signal } : undefined);
+        if (timer) clearTimeout(timer);
         const arrayBuffer = await response.arrayBuffer();
         const buffer = await context.decodeAudioData(arrayBuffer);
         this.sampleBuffers.set(key, buffer);
@@ -307,26 +325,30 @@ export class Player {
   async preview(note, volume = 1) {
     const previewToken = this.beginPreview();
     if (Number(volume) <= 0) return;
+    await this.unlockAudio();
     const context = this.ensureContext();
-    await this.loadSamplePack();
-    await this.preloadSamples([{ instrument: "piano", note }]);
     if (previewToken !== this.previewToken) return;
     const start = context.currentTime;
     this.playTone(note, start, 0.22, applyVolume(0.09, volume), getInstrumentPreset("piano"), "piano", "preview");
+    this.loadSamplePack()
+      .then(() => this.preloadSamples([{ instrument: "piano", note }]))
+      .catch(() => {});
   }
 
   async previewChord(chordSymbol, volume = 1) {
     const previewToken = this.beginPreview();
     if (Number(volume) <= 0) return;
+    await this.unlockAudio();
     const context = this.ensureContext();
     const start = context.currentTime + 0.02;
     const notes = chordPitches(chordSymbol, 3);
-    await this.loadSamplePack();
-    await this.preloadSamples(notes.map((note) => ({ instrument: "piano", note })));
     if (previewToken !== this.previewToken) return;
     for (const event of createPreviewChordEvents(notes)) {
       this.playTone(event.note, start, event.durationTicks * MEDIUM_SECONDS_PER_TICK, applyVolume(event.gain * 1.25, volume), getInstrumentPreset("piano"), "piano", "preview", { pedal: event.pedal });
     }
+    this.loadSamplePack()
+      .then(() => this.preloadSamples(notes.map((note) => ({ instrument: "piano", note }))))
+      .catch(() => {});
   }
 
   beginPreview() {
@@ -339,7 +361,7 @@ export class Player {
     this.stop();
     const context = this.ensureContext();
     await this.unlockAudio();
-    await this.prepareSong(song);
+    await waitWithTimeout(this.prepareSong(song), 900);
     const start = context.currentTime + 0.18;
     const startAbsTick = Math.max(0, Number(song.playStartAbsTick) || 0);
     const tickSeconds = getTickSeconds(song.speed);
