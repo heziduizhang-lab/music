@@ -1,5 +1,7 @@
 name: Deploy static site to GitHub Pages
 
+# Touch this workflow when GitHub Pages needs an explicit rebuild.
+
 on:
   push:
     branches: ["main"]
