@@ -40,7 +40,50 @@
           音响
           <select id="texture">
             <option value="arpeggio">分解式</option>
+            <option value="slowArpeggio">慢琶音</option>
             <option value="block">柱式</option>
+          </select>
+        </label>
+        <label>
+          速度
+          <select id="speed">
+            <option value="fast">快速</option>
+            <option value="medium" selected>中速</option>
+            <option value="slow">慢速</option>
+          </select>
+        </label>
+        <label>
+          旋律音色
+          <select id="melodyTone">
+            <option value="clarinet">单簧管</option>
+            <option value="piano">钢琴</option>
+            <option value="violin">小提琴</option>
+          </select>
+        </label>
+        <label>
+          旋律音量
+          <select id="melodyVolume">
+            <option value="0">0%</option>
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+          </select>
+        </label>
+        <label>
+          和声音色
+          <select id="harmonyTone">
+            <option value="piano">钢琴</option>
+            <option value="violin">小提琴</option>
+            <option value="clarinet">单簧管</option>
+          </select>
+        </label>
+        <label>
+          和声音量
+          <select id="harmonyVolume">
+            <option value="0">0%</option>
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
           </select>
         </label>
         <button id="generate" class="primary">输出和弦</button>

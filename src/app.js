@@ -1,5 +1,5 @@
 import { generateHarmony, getReplacementGroups } from "./harmonyEngine.js";
-import { barTickFromAbsoluteTick, DURATIONS, getDuration, getMeter, KEYS } from "./music.js";
+import { absoluteTick, barTickFromAbsoluteTick, DURATIONS, getDuration, getMeter, KEYS } from "./music.js";
 import { Player } from "./player.js";
 
 const keyboardNotes = [
@@ -14,9 +14,16 @@ const state = {
   meter: "4/4",
   selectedStyle: "pop",
   texture: "arpeggio",
+  speed: "medium",
+  melodyTone: "clarinet",
+  harmonyTone: "piano",
+  melodyVolume: 1,
+  harmonyVolume: 1,
   currentDuration: "quarter",
   dotted: false,
   cursorAbsTick: 0,
+  playStartAbsTick: 0,
+  playheadAbsTick: 0,
   melody: [],
   harmony: { pop: [], jazz: [] },
   lockedHarmony: { pop: {}, jazz: {} },
@@ -25,6 +32,7 @@ const state = {
 };
 
 const player = new Player();
+let playheadFrame = null;
 
 const els = {};
 
@@ -38,7 +46,7 @@ function init() {
 }
 
 function bindElements() {
-  for (const id of ["key", "meter", "style", "texture", "generate", "play", "stop", "undo", "delete", "clear", "editor", "durations", "keyboard", "dotted", "rest", "message", "replacementPanel", "replacementTitle", "replacementOptions"]) {
+  for (const id of ["key", "meter", "style", "texture", "speed", "melodyTone", "melodyVolume", "harmonyTone", "harmonyVolume", "generate", "play", "stop", "undo", "delete", "clear", "editor", "durations", "keyboard", "dotted", "rest", "message", "replacementPanel", "replacementTitle", "replacementOptions"]) {
     els[id] = document.getElementById(id);
   }
 }
@@ -49,6 +57,11 @@ function renderSelectors() {
   els.meter.value = state.meter;
   els.style.value = state.selectedStyle;
   els.texture.value = state.texture;
+  els.speed.value = state.speed;
+  els.melodyTone.value = state.melodyTone;
+  els.melodyVolume.value = String(state.melodyVolume);
+  els.harmonyTone.value = state.harmonyTone;
+  els.harmonyVolume.value = String(state.harmonyVolume);
 }
 
 function bindToolbar() {
@@ -69,9 +82,36 @@ function bindToolbar() {
   els.texture.addEventListener("change", () => {
     state.texture = els.texture.value;
   });
+  els.speed.addEventListener("change", () => {
+    state.speed = els.speed.value;
+  });
+  els.melodyTone.addEventListener("change", () => {
+    state.melodyTone = els.melodyTone.value;
+  });
+  els.melodyVolume.addEventListener("change", () => {
+    state.melodyVolume = Number(els.melodyVolume.value);
+  });
+  els.harmonyTone.addEventListener("change", () => {
+    state.harmonyTone = els.harmonyTone.value;
+  });
+  els.harmonyVolume.addEventListener("change", () => {
+    state.harmonyVolume = Number(els.harmonyVolume.value);
+  });
   els.generate.addEventListener("click", generate);
-  els.play.addEventListener("click", () => player.playSong(state));
-  els.stop.addEventListener("click", () => player.stop());
+  els.play.addEventListener("click", async () => {
+    els.play.disabled = true;
+    try {
+      await player.unlockAudio();
+      const playback = await player.playSong(state);
+      startPlayheadAnimation(playback);
+    } finally {
+      els.play.disabled = false;
+    }
+  });
+  els.stop.addEventListener("click", () => {
+    player.stop();
+    stopPlayheadAnimation();
+  });
   els.undo.addEventListener("click", undo);
   els.delete.addEventListener("click", deleteLast);
   els.clear.addEventListener("click", clearAll);
@@ -85,6 +125,7 @@ function bindToolbar() {
       closeReplacements();
     }
   });
+  els.editor.addEventListener("click", setPlayheadFromEditor);
 }
 
 function renderDurationButtons() {
@@ -115,7 +156,7 @@ function renderKeyboard() {
     const key = event.target.closest("[data-note]");
     if (!key) return;
     insertNote(key.dataset.note);
-    player.preview(key.dataset.note);
+    player.preview(key.dataset.note, state.melodyVolume);
   });
 }
 
@@ -159,7 +200,10 @@ function deleteLast() {
 
 function clearAll() {
   player.stop();
+  stopPlayheadAnimation();
   state.cursorAbsTick = 0;
+  state.playStartAbsTick = 0;
+  state.playheadAbsTick = 0;
   state.melody = [];
   state.harmony = { pop: [], jazz: [] };
   state.lockedHarmony = { pop: {}, jazz: {} };
@@ -189,13 +233,18 @@ function render() {
   renderDurationState();
   els.style.value = state.selectedStyle;
   els.texture.value = state.texture;
+  els.speed.value = state.speed;
+  els.melodyTone.value = state.melodyTone;
+  els.melodyVolume.value = String(state.melodyVolume);
+  els.harmonyTone.value = state.harmonyTone;
+  els.harmonyVolume.value = String(state.harmonyVolume);
   els.message.textContent = state.message;
   renderEditor();
 }
 
 function renderEditor() {
   const meter = getMeter(state.meter);
-  const minBars = Math.max(4, Math.ceil(Math.max(state.cursorAbsTick, 1) / meter.ticksPerMeasure));
+  const minBars = Math.max(4, Math.ceil(Math.max(state.cursorAbsTick, state.playheadAbsTick, 1) / meter.ticksPerMeasure));
   const harmony = state.harmony[state.selectedStyle] || [];
   const bars = Array.from({ length: minBars }, (_, index) => index + 1);
   els.editor.innerHTML = bars.map((bar) => renderBar(bar, meter, harmony)).join("");
@@ -207,17 +256,90 @@ function renderBar(bar, meter, harmony) {
   const cursor = barTickFromAbsoluteTick(state.cursorAbsTick, state.meter);
   const emptySlots = Array.from({ length: meter.ticksPerMeasure }, (_, tick) => tick);
   return `
-    <section class="measure">
+    <section class="measure" data-bar="${bar}">
       <div class="measure-number">第 ${bar} 小节</div>
       <div class="chord-row">
         ${chords.length ? chords.map((chord) => `<button class="chord-pill" style="left:${(chord.tick / meter.ticksPerMeasure) * 100}%" data-bar="${bar}" data-tick="${chord.tick}" data-chord="${chord.chord}">${chord.chord}</button>`).join("") : '<span class="chord-placeholder">和弦</span>'}
       </div>
       <div class="staff">
         ${emptySlots.map((tick) => `<span class="tick ${tick % 4 === 0 ? "beat" : ""} ${cursor.bar === bar && cursor.tick === tick ? "cursor" : ""}" style="left:${(tick / meter.ticksPerMeasure) * 100}%"></span>`).join("")}
+        ${renderPlayhead(bar, meter)}
         ${notes.map((event) => renderEvent(event, meter)).join("")}
       </div>
     </section>
   `;
+}
+
+function renderPlayhead(bar, meter) {
+  const position = barTickFromAbsoluteTick(state.playheadAbsTick, state.meter);
+  if (position.bar !== bar) return "";
+  const left = (position.tick / meter.ticksPerMeasure) * 100;
+  return `<span class="playhead-line" style="left:${left}%"></span>`;
+}
+
+function setPlayheadFromEditor(event) {
+  if (event.target.closest(".chord-pill") || event.target.closest(".note-chip")) return;
+  const staff = event.target.closest(".staff");
+  if (!staff) return;
+  const measure = staff.closest(".measure");
+  const bar = Number(measure?.dataset.bar);
+  if (!bar) return;
+  const rect = staff.getBoundingClientRect();
+  const meter = getMeter(state.meter);
+  const ratio = Math.max(0, Math.min(0.999, (event.clientX - rect.left) / rect.width));
+  const tick = Math.floor(ratio * meter.ticksPerMeasure);
+  state.playStartAbsTick = absoluteTick(bar, tick, state.meter);
+  state.playheadAbsTick = state.playStartAbsTick;
+  stopPlayheadAnimation(false);
+  setMessage(`播放位置已设为第 ${bar} 小节第 ${tick + 1} 格。`);
+  render();
+}
+
+function startPlayheadAnimation(playback) {
+  stopPlayheadAnimation(false);
+  state.playStartAbsTick = playback.startAbsTick;
+  state.playheadAbsTick = playback.startAbsTick;
+  render();
+  const endAbsTick = Math.max(playback.endAbsTick, playback.startAbsTick);
+  const animate = () => {
+    const contextTime = player.context?.currentTime ?? 0;
+    const elapsed = Math.max(0, contextTime - playback.startTime);
+    state.playheadAbsTick = Math.min(endAbsTick, playback.startAbsTick + elapsed / playback.tickSeconds);
+    updatePlayheadDom();
+    if (state.playheadAbsTick < endAbsTick) {
+      playheadFrame = requestAnimationFrame(animate);
+    } else {
+      state.playStartAbsTick = 0;
+      state.playheadAbsTick = 0;
+      playheadFrame = null;
+      render();
+    }
+  };
+  playheadFrame = requestAnimationFrame(animate);
+}
+
+function stopPlayheadAnimation(syncStart = true) {
+  if (playheadFrame) {
+    cancelAnimationFrame(playheadFrame);
+    playheadFrame = null;
+  }
+  if (syncStart) state.playStartAbsTick = state.playheadAbsTick;
+}
+
+function updatePlayheadDom() {
+  const meter = getMeter(state.meter);
+  const position = barTickFromAbsoluteTick(state.playheadAbsTick, state.meter);
+  const measures = els.editor.querySelectorAll(".measure");
+  measures.forEach((measure) => {
+    const line = measure.querySelector(".playhead-line");
+    const bar = Number(measure.dataset.bar);
+    if (!line) return;
+    line.hidden = bar !== position.bar;
+    if (bar === position.bar) line.style.left = `${(position.tick / meter.ticksPerMeasure) * 100}%`;
+  });
+  if (!els.editor.querySelector(`.measure[data-bar="${position.bar}"] .playhead-line`)) {
+    render();
+  }
 }
 
 function renderEvent(event, meter) {
@@ -233,7 +355,7 @@ function renderEvent(event, meter) {
 document.addEventListener("click", (event) => {
   const chordButton = event.target.closest(".chord-pill");
   if (!chordButton) return;
-  player.previewChord(chordButton.dataset.chord);
+  player.previewChord(chordButton.dataset.chord, state.harmonyVolume);
   openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.chord, "replace");
 });
 
@@ -254,10 +376,10 @@ function openReplacements(anchor, bar, tick, target, mode = "replace") {
   els.replacementPanel.style.top = `${rect.bottom + 8}px`;
   els.replacementPanel.hidden = false;
   els.replacementOptions.querySelectorAll("[data-replacement]").forEach((button) => {
-    button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement));
-    button.addEventListener("focus", () => player.previewChord(button.dataset.replacement));
+    button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement, state.harmonyVolume));
+    button.addEventListener("focus", () => player.previewChord(button.dataset.replacement, state.harmonyVolume));
     button.addEventListener("click", () => {
-      player.previewChord(button.dataset.replacement);
+      player.previewChord(button.dataset.replacement, state.harmonyVolume);
       applyReplacement(button.dataset.replacement);
     });
   });
@@ -297,3 +419,4 @@ function setMessage(message) {
 }
 
 init();
+player.loadSamplePack();

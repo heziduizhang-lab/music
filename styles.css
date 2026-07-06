@@ -159,6 +159,7 @@ select {
     linear-gradient(to bottom, transparent 47px, #dfe4eb 48px, transparent 49px);
   border-left: 2px solid #9ca3af;
   border-right: 2px solid #9ca3af;
+  cursor: crosshair;
 }
 
 .tick {
@@ -178,6 +179,29 @@ select {
   background: var(--danger);
 }
 
+.playhead-line {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  transform: translateX(-1px);
+  background: #e11d48;
+  box-shadow: 0 0 0 2px rgb(225 29 72 / 18%);
+  z-index: 8;
+  pointer-events: none;
+}
+
+.playhead-line::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -7px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  background: #e11d48;
+}
+
 .note-chip {
   position: absolute;
   top: 22px;
@@ -193,6 +217,7 @@ select {
   overflow: hidden;
   padding: 0 6px;
   min-height: 0;
+  z-index: 4;
 }
 
 .note-button {
