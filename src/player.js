@@ -23,7 +23,7 @@ export function getInstrumentPreset(name) {
       decay: 0.16,
       sustain: 0.22,
       release: 0.04,
-      gain: 0.082
+      gain: 0.164
     }
   };
   return presets[name] || presets.piano;
@@ -36,14 +36,14 @@ export function createArpeggioEvents(notes, startTick, durationTicks, style = "p
   const step = style === "jazz" ? 1 : 2;
   const events = [];
 
-  events.push({ note: notes[0], tick: startTick, durationTicks: Math.min(durationTicks, 4), gain: 0.095, role: "bass" });
+  events.push({ note: notes[0], tick: startTick, durationTicks: Math.min(durationTicks, 4), gain: 0.19, role: "bass" });
   for (let offset = 0, index = 0; offset < durationTicks; offset += step, index += 1) {
     const note = upper[pattern[index % pattern.length] % upper.length];
     events.push({
       note,
       tick: startTick + offset,
       durationTicks: Math.min(step * 1.8, durationTicks - offset),
-      gain: style === "jazz" ? 0.074 : 0.084,
+      gain: style === "jazz" ? 0.148 : 0.168,
       role: "piano-arp"
     });
   }
@@ -57,7 +57,7 @@ export function createBlockEvents(notes, startTick, durationTicks) {
     note,
     tick: startTick,
     durationTicks: length,
-    gain: index === 0 ? 0.095 : 0.078,
+    gain: index === 0 ? 0.19 : 0.156,
     role: index === 0 ? "bass" : "piano-block"
   }));
 }
