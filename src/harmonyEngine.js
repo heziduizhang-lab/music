@@ -346,6 +346,7 @@ function uniqueSortedTicks(ticks, meterName) {
 function collapseRepeated(chords) {
   return chords.filter((item, index) => {
     if (index === 0) return true;
+    if (item.locked) return true;
     const previous = chords[index - 1].chord;
     const current = item.chord;
     if (current.name === previous.name) return false;
@@ -386,7 +387,7 @@ function pickAdaptiveChords(measure, candidates, previousChord, style, isFinalMe
         ? findOrCreateChord(locked, candidates, keyId, style)
         : pickMeasureChord(segment, candidates, localPrevious, style, isFinalMeasure && index === starts.length - 1);
       total += scoreChord(chord, segment, localPrevious, style, isFinalMeasure && index === starts.length - 1);
-      picked.push({ bar: measure.bar, tick: start, chord });
+      picked.push({ bar: measure.bar, tick: start, chord, locked: Boolean(locked) });
       localPrevious = chord;
     });
 

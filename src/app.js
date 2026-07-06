@@ -81,7 +81,7 @@ function bindToolbar() {
   });
   els.rest.addEventListener("click", insertRest);
   document.addEventListener("click", (event) => {
-    if (!els.replacementPanel.contains(event.target) && !event.target.closest(".chord-pill")) {
+    if (!els.replacementPanel.contains(event.target) && !event.target.closest(".chord-pill") && !event.target.closest(".note-chip")) {
       closeReplacements();
     }
   });
@@ -224,20 +224,30 @@ function renderEvent(event, meter) {
   const left = (event.tick / meter.ticksPerMeasure) * 100;
   const width = Math.max(6, (event.durationTicks / meter.ticksPerMeasure) * 100 - 1);
   const label = event.type === "rest" ? "休" : event.note;
-  return `<div class="note-chip ${event.type === "rest" ? "rest-chip" : ""}" style="left:${left}%;width:${width}%">${label}</div>`;
+  if (event.type === "rest") {
+    return `<div class="note-chip rest-chip" style="left:${left}%;width:${width}%">${label}</div>`;
+  }
+  return `<button class="note-chip note-button" style="left:${left}%;width:${width}%" data-bar="${event.bar}" data-tick="${event.tick}" data-note="${event.note}" title="给 ${event.note} 添加或修改和弦">${label}</button>`;
 }
 
 document.addEventListener("click", (event) => {
   const chordButton = event.target.closest(".chord-pill");
   if (!chordButton) return;
   player.previewChord(chordButton.dataset.chord);
-  openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.chord);
+  openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.chord, "replace");
 });
 
-function openReplacements(anchor, bar, tick, chord) {
-  state.selectedChord = { bar, tick, chord };
-  const groups = getReplacementGroups(state, bar, chord, state.selectedStyle);
-  els.replacementTitle.textContent = `替换 ${chord}`;
+document.addEventListener("click", (event) => {
+  const noteButton = event.target.closest(".note-button");
+  if (!noteButton) return;
+  openReplacements(noteButton, Number(noteButton.dataset.bar), Number(noteButton.dataset.tick), noteButton.dataset.note, "note");
+});
+
+function openReplacements(anchor, bar, tick, target, mode = "replace") {
+  const currentChord = findChordAt(bar, tick) || findNearestChord(bar, tick) || target;
+  state.selectedChord = { bar, tick, chord: currentChord, mode, note: mode === "note" ? target : null };
+  const groups = getReplacementGroups(state, bar, currentChord, state.selectedStyle);
+  els.replacementTitle.textContent = mode === "note" ? `给 ${target} 配和弦` : `替换 ${currentChord}`;
   els.replacementOptions.innerHTML = groups.map((group) => `<button data-replacement="${group.chord}"><span>${group.label}</span><strong>${group.chord}</strong></button>`).join("");
   const rect = anchor.getBoundingClientRect();
   els.replacementPanel.style.left = `${Math.min(rect.left, window.innerWidth - 230)}px`;
@@ -258,9 +268,22 @@ function applyReplacement(chord) {
   if (!selected) return;
   state.lockedHarmony[state.selectedStyle][`${selected.bar}:${selected.tick}`] = chord;
   state.harmony = generateHarmony(state, state.lockedHarmony);
-  setMessage(`第 ${selected.bar} 小节已替换为 ${chord}，后续和弦已重新计算。`);
+  const subject = selected.mode === "note" ? `${selected.note} 上方` : `第 ${selected.bar} 小节`;
+  setMessage(`${subject}已设为 ${chord}，后续和弦已重新计算。`);
   closeReplacements();
   render();
+}
+
+function findChordAt(bar, tick) {
+  const harmony = state.harmony[state.selectedStyle] || [];
+  return harmony.find((item) => item.bar === bar && item.tick === tick)?.chord;
+}
+
+function findNearestChord(bar, tick) {
+  const harmony = state.harmony[state.selectedStyle] || [];
+  return harmony
+    .filter((item) => item.bar === bar && item.tick <= tick)
+    .sort((a, b) => b.tick - a.tick)[0]?.chord || harmony.find((item) => item.bar === bar)?.chord;
 }
 
 function closeReplacements() {

@@ -191,6 +191,19 @@ select {
   font-size: 12px;
   font-weight: 700;
   overflow: hidden;
+  padding: 0 6px;
+  min-height: 0;
+}
+
+.note-button {
+  cursor: pointer;
+}
+
+.note-button:hover,
+.note-button:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(15 118 110 / 18%);
 }
 
 .rest-chip {

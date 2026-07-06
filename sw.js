@@ -1,4 +1,4 @@
-const CACHE_NAME = "melody-harmonizer-v20260706-mobile";
+const CACHE_NAME = "melody-harmonizer-v20260706-note-chords";
 const ASSETS = [
   "./",
   "./index.html",
