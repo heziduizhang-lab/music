@@ -1,4 +1,4 @@
-import { chordPitches } from "./harmonyEngine.js";
+import { chordPitches, NO_CHORD } from "./harmonyEngine.js";
 import { absoluteTick, frequencyFromNote, getMeter } from "./music.js";
 
 const MEDIUM_SECONDS_PER_TICK = 0.125;
@@ -178,7 +178,8 @@ export function collectSongSampleRequests(song) {
   }
 
   for (const chord of harmony) {
-    const next = harmony.find((item) => absoluteTick(item.bar, item.tick, song.meter) > absoluteTick(chord.bar, chord.tick, song.meter));
+    if (chord.muted || chord.chord === NO_CHORD) continue;
+    const next = nextHarmonyBoundary(harmony, chord, song.meter);
     const endTick = next ? absoluteTick(next.bar, next.tick, song.meter) : chord.bar * meter.ticksPerMeasure;
     const chordStartTick = absoluteTick(chord.bar, chord.tick, song.meter);
     const durationTicks = Math.max(2, endTick - chordStartTick);
@@ -195,6 +196,11 @@ export function collectSongSampleRequests(song) {
     seen.add(key);
     return true;
   });
+}
+
+function nextHarmonyBoundary(harmony, chord, meterName) {
+  const start = absoluteTick(chord.bar, chord.tick, meterName);
+  return harmony.find((item) => !item.muted && item.chord !== NO_CHORD && absoluteTick(item.bar, item.tick, meterName) > start);
 }
 
 export class Player {
@@ -395,7 +401,8 @@ export class Player {
     }
 
     for (const chord of harmony) {
-      const next = harmony.find((item) => absoluteTick(item.bar, item.tick, song.meter) > absoluteTick(chord.bar, chord.tick, song.meter));
+      if (chord.muted || chord.chord === NO_CHORD) continue;
+      const next = nextHarmonyBoundary(harmony, chord, song.meter);
       const endTick = next ? absoluteTick(next.bar, next.tick, song.meter) : chord.bar * meter.ticksPerMeasure;
       const chordStartTick = absoluteTick(chord.bar, chord.tick, song.meter);
       if (endTick <= startAbsTick) continue;

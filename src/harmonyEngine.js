@@ -96,6 +96,8 @@ const TRADITIONAL_PROGRESSIONS = [
   ["t", "Sii65", "K46", "D7", "t"]
 ];
 
+export const NO_CHORD = "__NO_CHORD__";
+
 function makeChord(rootPc, quality, meta = {}) {
   const intervals = QUALITY_INTERVALS[quality];
   const tones = intervals.map((interval) => transposePc(rootPc, interval));
@@ -634,6 +636,8 @@ function collapseRepeated(chords) {
     if (index === 0) return true;
     const previous = chords[index - 1].chord;
     const current = item.chord;
+    if (current.name === NO_CHORD) return true;
+    if (previous.name === NO_CHORD) return true;
     if (current.name === previous.name) return false;
     return !(current.rootPc === previous.rootPc && current.roman === previous.roman && current.function === previous.function);
   });
@@ -670,11 +674,13 @@ function pickAdaptiveChords(measure, candidates, previousChord, style, isFinalMe
       const locked = lockedChordFor(locks, measure.bar, start);
       const lockedName = lockedChordName(locked);
       const chord = lockedName
-        ? findOrCreateChord(lockedName, candidates, keyId, style)
+        ? lockedName === NO_CHORD
+          ? makeNoChord()
+          : findOrCreateChord(lockedName, candidates, keyId, style)
         : pickMeasureChord(segment, candidates, localPrevious, style, isFinalMeasure && index === starts.length - 1);
-      total += scoreChord(chord, segment, localPrevious, style, isFinalMeasure && index === starts.length - 1);
+      total += chord.name === NO_CHORD ? -0.4 : scoreChord(chord, segment, localPrevious, style, isFinalMeasure && index === starts.length - 1);
       picked.push({ bar: measure.bar, tick: start, chord, locked: Boolean(locked) });
-      localPrevious = chord;
+      if (chord.name !== NO_CHORD) localPrevious = chord;
     });
 
     const collapsed = collapseRepeated(picked);
@@ -690,7 +696,22 @@ function pickAdaptiveChords(measure, candidates, previousChord, style, isFinalMe
   return best || { score: 0, chords: [{ bar: measure.bar, tick: 0, chord: candidates[0] }], lastChord: candidates[0] };
 }
 
+function makeNoChord() {
+  return {
+    name: NO_CHORD,
+    rootPc: -1,
+    bassPc: -1,
+    quality: "",
+    tones: [],
+    roman: "",
+    function: "silence",
+    stability: 0,
+    color: "silence"
+  };
+}
+
 function findOrCreateChord(symbol, candidates, keyId, style) {
+  if (symbol === NO_CHORD) return makeNoChord();
   const found = candidates.find((item) => item.name === symbol);
   if (found) return found;
   const parsed = parseChordSymbol(symbol);
@@ -831,11 +852,23 @@ export function generateHarmony(song, locks = {}) {
   measures.forEach((measure, index) => {
     const isFinal = index === measures.length - 1;
     const popChoice = pickAdaptiveChords(measure, popCandidates, previousPop, "pop", isFinal, song.meter, locks.pop || {}, song.keyId);
-    popChoice.chords.forEach((item) => pop.push({ bar: item.bar, tick: item.tick, chord: item.chord.name, roman: item.chord.roman }));
+    popChoice.chords.forEach((item) => {
+      if (item.chord.name === NO_CHORD) {
+        pop.push({ bar: item.bar, tick: item.tick, chord: NO_CHORD, roman: "", muted: true });
+      } else {
+        pop.push({ bar: item.bar, tick: item.tick, chord: item.chord.name, roman: item.chord.roman });
+      }
+    });
     previousPop = popChoice.lastChord;
 
     const jazzChoice = pickAdaptiveChords(measure, jazzCandidates, previousJazz || previousPop, "jazz", isFinal, song.meter, locks.jazz || {}, song.keyId);
-    jazzChoice.chords.forEach((item) => jazz.push({ bar: item.bar, tick: item.tick, chord: item.chord.name, roman: item.chord.roman }));
+    jazzChoice.chords.forEach((item) => {
+      if (item.chord.name === NO_CHORD) {
+        jazz.push({ bar: item.bar, tick: item.tick, chord: NO_CHORD, roman: "", muted: true });
+      } else {
+        jazz.push({ bar: item.bar, tick: item.tick, chord: item.chord.name, roman: item.chord.roman });
+      }
+    });
     previousJazz = jazzChoice.lastChord;
   });
 
@@ -902,8 +935,7 @@ export function getTraditionalReplacementTree(keyId) {
       children: groups.map((group) => ({
         id: `${system}-${group}`,
         label: titleMap[group] || group,
-        children: catalog
-          .filter((item) => item.system === system && item.group === group)
+        children: dedupeTraditionalGroup(catalog.filter((item) => item.system === system && item.group === group))
           .map((item) => ({
             id: item.id,
             label: item.label,
@@ -912,6 +944,30 @@ export function getTraditionalReplacementTree(keyId) {
           }))
       }))
     };
+  });
+}
+
+function dedupeTraditionalGroup(items) {
+  const hiddenAliases = new Set([
+    "T不完全",
+    "t不完全",
+    "sii",
+    "sii6",
+    "sii7",
+    "sii65",
+    "sii43",
+    "sii2",
+    "VI阻碍",
+    "D7不完全",
+    "D6上",
+    "D76"
+  ]);
+  const seenLabels = new Set();
+  return items.filter((item) => {
+    if (hiddenAliases.has(item.label)) return false;
+    if (seenLabels.has(item.label)) return false;
+    seenLabels.add(item.label);
+    return true;
   });
 }
 

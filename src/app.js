@@ -1,4 +1,4 @@
-import { generateHarmony, getReplacementGroups } from "./harmonyEngine.js";
+import { generateHarmony, getReplacementGroups, NO_CHORD } from "./harmonyEngine.js";
 import { absoluteTick, barTickFromAbsoluteTick, DURATIONS, getDuration, getMeter, KEYS } from "./music.js";
 import { Player } from "./player.js";
 
@@ -285,7 +285,7 @@ function renderEditor() {
 
 function renderBar(bar, meter, harmony) {
   const notes = state.melody.filter((event) => event.bar === bar);
-  const chords = harmony.filter((item) => item.bar === bar);
+  const chords = harmony.filter((item) => item.bar === bar && !item.muted && item.chord !== NO_CHORD);
   const cursor = barTickFromAbsoluteTick(state.cursorAbsTick, state.meter);
   const emptySlots = Array.from({ length: meter.ticksPerMeasure }, (_, tick) => tick);
   return `
@@ -432,8 +432,10 @@ function positionReplacementPanel(anchor) {
 }
 
 function renderSimpleReplacementOptions(groups) {
-  els.replacementOptions.innerHTML = groups.map((group) => `<button data-replacement="${group.chord}" data-label="${group.chord}"><span>${group.label}</span><strong>${group.chord}</strong></button>`).join("");
+  const noChord = '<button data-replacement="__NO_CHORD__" data-label="不编配"><span>留空</span><strong>不编配</strong></button>';
+  els.replacementOptions.innerHTML = groups.map((group) => `<button data-replacement="${group.chord}" data-label="${group.chord}"><span>${group.label}</span><strong>${group.chord}</strong></button>`).join("") + noChord;
   els.replacementOptions.querySelectorAll("[data-replacement]").forEach((button) => {
+    if (button.dataset.replacement === NO_CHORD) return;
     button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {}));
     button.addEventListener("focus", () => player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {}));
   });
@@ -448,7 +450,7 @@ function renderTraditionalReplacementOptions(items, trail) {
     if (item.children) {
       return `<button class="replacement-folder" data-folder="${index}"><span>${item.label}</span><strong>进入</strong></button>`;
     }
-    return `<button data-replacement="${item.chord}" data-label="${item.label}"><span>${item.label}</span><strong>${item.chord}</strong></button>`;
+    return `<button data-replacement="${item.chord}" data-label="${item.label}"><span>${item.label}</span></button>`;
   }).join("");
   const backButton = els.replacementOptions.querySelector("[data-back]");
   if (backButton) {
@@ -476,7 +478,9 @@ function handleReplacementClick(event) {
   }
   const replacement = event.target.closest("[data-replacement]");
   if (!replacement) return;
-  player.previewChord(replacement.dataset.replacement, state.harmonyVolume).catch(() => {});
+  if (replacement.dataset.replacement !== NO_CHORD) {
+    player.previewChord(replacement.dataset.replacement, state.harmonyVolume).catch(() => {});
+  }
   applyReplacement(replacement.dataset.replacement, replacement.dataset.label);
 }
 
@@ -486,20 +490,21 @@ function applyReplacement(chord, label = chord) {
   state.lockedHarmony[state.selectedStyle][`${selected.bar}:${selected.tick}`] = state.selectedStyle === "traditional" ? { chord, label } : chord;
   state.harmony = generateHarmony(state, state.lockedHarmony);
   const subject = selected.mode === "note" ? `${selected.note} 上方` : `第 ${selected.bar} 小节`;
-  setMessage(`${subject}已设为 ${label}，后续和弦已重新计算。`);
+  setMessage(chord === NO_CHORD ? `${subject}已设为不编配，后续和弦已重新计算。` : `${subject}已设为 ${label}，后续和弦已重新计算。`);
   closeReplacements();
   render();
 }
 
 function findChordAt(bar, tick) {
   const harmony = state.harmony[state.selectedStyle] || [];
-  return harmony.find((item) => item.bar === bar && item.tick === tick)?.chord;
+  const found = harmony.find((item) => item.bar === bar && item.tick === tick);
+  return found?.muted ? undefined : found?.chord;
 }
 
 function findNearestChord(bar, tick) {
   const harmony = state.harmony[state.selectedStyle] || [];
   return harmony
-    .filter((item) => item.bar === bar && item.tick <= tick)
+    .filter((item) => item.bar === bar && item.tick <= tick && !item.muted && item.chord !== NO_CHORD)
     .sort((a, b) => b.tick - a.tick)[0]?.chord || harmony.find((item) => item.bar === bar)?.chord;
 }
 
