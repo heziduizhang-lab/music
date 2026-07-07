@@ -88,6 +88,14 @@ const COMMON_PROGRESSIONS = [
   ["i", "iv", "V", "i"]
 ];
 
+const TRADITIONAL_PROGRESSIONS = [
+  ["T", "S", "D", "T"],
+  ["T", "Sii6", "D7", "T"],
+  ["T", "S", "K46", "D7", "T"],
+  ["t", "s", "D7", "t"],
+  ["t", "Sii65", "K46", "D7", "t"]
+];
+
 function makeChord(rootPc, quality, meta = {}) {
   const intervals = QUALITY_INTERVALS[quality];
   const tones = intervals.map((interval) => transposePc(rootPc, interval));
@@ -122,6 +130,274 @@ function addInversions(list, chord) {
       color: "inversion"
     }));
   }
+}
+
+function degreePc(tonicPc, degree, mode = "major") {
+  const major = [0, 2, 4, 5, 7, 9, 11];
+  const minor = [0, 2, 3, 5, 7, 8, 10];
+  return transposePc(tonicPc, (mode === "minor" ? minor : major)[degree - 1]);
+}
+
+function accidentalDegreePc(tonicPc, semitone) {
+  return transposePc(tonicPc, semitone);
+}
+
+function chordSymbolFromPcs(rootPc, quality, bassPc, preferFlats) {
+  const root = noteNameFromPc(rootPc, preferFlats);
+  const bass = bassPc === undefined || bassPc === rootPc ? "" : `/${noteNameFromPc(bassPc, preferFlats)}`;
+  return `${root}${quality}${bass}`;
+}
+
+function triadBass(rootPc, quality, inversion) {
+  const intervals = QUALITY_INTERVALS[quality] || QUALITY_INTERVALS[""];
+  if (inversion === "6") return transposePc(rootPc, intervals[1]);
+  if (inversion === "64") return transposePc(rootPc, intervals[2]);
+  return rootPc;
+}
+
+function seventhBass(rootPc, quality, inversion) {
+  const intervals = QUALITY_INTERVALS[quality] || QUALITY_INTERVALS["7"];
+  if (inversion === "65") return transposePc(rootPc, intervals[1]);
+  if (inversion === "43") return transposePc(rootPc, intervals[2]);
+  if (inversion === "2") return transposePc(rootPc, intervals[3]);
+  return rootPc;
+}
+
+function traditionalItem(key, label, rootPc, quality, group, system, inversion = "", options = {}) {
+  const preferFlats = ["F", "Bb", "Eb", "Ab", "Db", "Gb"].includes(key.tonic) || label.includes("♭") || label.includes("N");
+  const bassPc = options.bassPc ?? (QUALITY_ROLE[quality] === "seventh" || ["7", "9", "m7", "dim7", "m7b5"].includes(quality)
+    ? seventhBass(rootPc, quality, inversion)
+    : triadBass(rootPc, quality, inversion));
+  return {
+    id: `${system}:${group}:${label}`,
+    label,
+    chord: chordSymbolFromPcs(rootPc, quality, bassPc, preferFlats),
+    rootPc,
+    bassPc,
+    quality,
+    tones: (QUALITY_INTERVALS[quality] || QUALITY_INTERVALS[""]).map((interval) => transposePc(rootPc, interval)),
+    roman: label,
+    function: group,
+    system,
+    group,
+    color: system,
+    stability: options.stability ?? 3,
+    inversion: Boolean(inversion || options.bassPc !== undefined)
+  };
+}
+
+function addTraditional(list, key, system, group, label, rootPc, quality, inversion = "", options = {}) {
+  list.push(traditionalItem(key, label, rootPc, quality, group, system, inversion, options));
+}
+
+function buildTraditionalCatalog(keyId) {
+  const key = keyFromId(keyId);
+  const tonicPc = pitchClass(key.tonic);
+  const mode = key.mode;
+  const major = mode === "major";
+  const list = [];
+
+  const I = degreePc(tonicPc, 1, mode);
+  const II = degreePc(tonicPc, 2, mode);
+  const III = degreePc(tonicPc, 3, mode);
+  const IV = degreePc(tonicPc, 4, mode);
+  const V = degreePc(tonicPc, 5, mode);
+  const VI = degreePc(tonicPc, 6, mode);
+  const VII = degreePc(tonicPc, 7, mode);
+  const raisedVII = transposePc(tonicPc, 11);
+  const flatII = accidentalDegreePc(tonicPc, 1);
+  const flatVI = accidentalDegreePc(tonicPc, 8);
+  const flatVII = accidentalDegreePc(tonicPc, 10);
+  const tonicQuality = major ? "" : "m";
+  const subQuality = major ? "" : "m";
+  const iiQuality = major ? "m" : "dim";
+  const iiiQuality = major ? "m" : "";
+  const viQuality = major ? "m" : "";
+
+  addTraditional(list, key, "natural", "tonic", "T", I, tonicQuality, "", { stability: 5 });
+  addTraditional(list, key, "natural", "tonic", "T不完全", I, tonicQuality, "", { stability: 4.7 });
+  addTraditional(list, key, "natural", "tonic", "T双三", I, "add9", "", { stability: 4.4 });
+  addTraditional(list, key, "natural", "tonic", "T6", I, tonicQuality, "6", { stability: 4.6 });
+  addTraditional(list, key, "natural", "tonic", "T64", I, tonicQuality, "64", { stability: 3.6 });
+  addTraditional(list, key, "natural", "tonic", "t", I, "m", "", { stability: major ? 2.4 : 5 });
+  addTraditional(list, key, "natural", "tonic", "t不完全", I, "m", "", { stability: 2.2 });
+  addTraditional(list, key, "natural", "tonic", "t6", I, "m", "6", { stability: 2.2 });
+  addTraditional(list, key, "natural", "tonic", "DTiii", III, iiiQuality, "", { stability: 3 });
+  addTraditional(list, key, "natural", "tonic", "T7", I, major ? "maj7" : "m7", "", { stability: 3.7 });
+  addTraditional(list, key, "natural", "tonic", "DTiii7", III, iiiQuality === "m" ? "m7" : "maj7", "", { stability: 2.8 });
+
+  for (const [label, root, quality, inv, stability] of [
+    ["S", IV, subQuality, "", 4.2],
+    ["S6", IV, subQuality, "6", 3.9],
+    ["S64", IV, subQuality, "64", 3.3],
+    ["sii", II, iiQuality, "", 3.1],
+    ["sii6", II, iiQuality, "6", 3.6],
+    ["sii7", II, iiQuality === "dim" ? "m7b5" : "m7", "", 3.2],
+    ["sii65", II, iiQuality === "dim" ? "m7b5" : "m7", "65", 3.3],
+    ["sii43", II, iiQuality === "dim" ? "m7b5" : "m7", "43", 2.8],
+    ["sii2", II, iiQuality === "dim" ? "m7b5" : "m7", "2", 2.8],
+    ["♭VI", flatVI, "", "", 2.7],
+    ["♭VII", flatVII, "", "", 2.6],
+    ["♭VII6", flatVII, "", "6", 2.4],
+    ["Sii", II, major ? "m" : "dim", "", 3.1],
+    ["Sii6", II, major ? "m" : "dim", "6", 3.6],
+    ["Sii7", II, major ? "m7" : "m7b5", "", 3.2],
+    ["Sii65", II, major ? "m7" : "m7b5", "65", 3.3],
+    ["Sii43", II, major ? "m7" : "m7b5", "43", 2.8],
+    ["Sii2", II, major ? "m7" : "m7b5", "2", 2.8],
+    ["VI", VI, viQuality, "", 3.2],
+    ["VI阻碍", VI, viQuality, "", 3.4],
+    ["S7", IV, subQuality === "m" ? "m7" : "maj7", "", 3],
+    ["VI7", VI, viQuality === "m" ? "m7" : "maj7", "", 2.7]
+  ]) addTraditional(list, key, "natural", "subdominant", label, root, quality, inv, { stability });
+
+  for (const [label, root, quality, inv, bass, stability] of [
+    ["D9♭", V, "7b9", "", undefined, 3.6],
+    ["D", V, "", "", undefined, 4.3],
+    ["D6", V, "", "6", undefined, 3.8],
+    ["D64", V, "", "64", undefined, 3.2],
+    ["K46", I, tonicQuality, "", V, 4.5],
+    ["D7", V, "7", "", undefined, 4.7],
+    ["D7不完全", V, "7", "", undefined, 4.2],
+    ["D65", V, "7", "65", undefined, 4],
+    ["D43", V, "7", "43", undefined, 3.8],
+    ["D2", V, "7", "2", undefined, 3.7],
+    ["D9", V, "9", "", undefined, 3.4],
+    ["D6上", V, "", "6", undefined, 3.4],
+    ["D76", V, "7", "65", undefined, 3.7]
+  ]) addTraditional(list, key, "natural", "dominant", label, root, quality, inv, { bassPc: bass, stability });
+
+  for (const [label, quality, inv, stability] of [
+    ["Dvii7♭", "dim7", "", 3.3],
+    ["Dvii65♭", "dim7", "65", 3.1],
+    ["Dvii43♭", "dim7", "43", 3],
+    ["Dvii2♭", "dim7", "2", 2.9],
+    ["Dvii6", "dim", "6", 3.2],
+    ["Dvii7", "dim7", "", 3.4],
+    ["Dvii65", "dim7", "65", 3.2],
+    ["Dvii43", "dim7", "43", 3],
+    ["Dvii2", "dim7", "2", 2.9]
+  ]) addTraditional(list, key, "natural", "leading", label, raisedVII, quality, inv, { stability });
+
+  addTraditional(list, key, "altered", "altered-dominant", "N6", flatII, "", "6", { stability: 3.3 });
+  addTraditional(list, key, "altered", "altered-dominant", "It+6", flatVI, "7", "", { stability: 3.2 });
+  addTraditional(list, key, "altered", "altered-dominant", "Ger+6", flatVI, "7", "", { stability: 3.3 });
+  addTraditional(list, key, "altered", "altered-dominant", "Fr+6", flatVI, "7b9", "", { stability: 3.1 });
+  const ddRoot = transposePc(V, 7);
+  for (const [label, quality, inv, stability] of [
+    ["DD", "", "", 3.4],
+    ["DD6", "", "6", 3.2],
+    ["DD7", "7", "", 3.6],
+    ["DD65", "7", "65", 3.4],
+    ["DDvii7", "dim7", "", 3.2],
+    ["DD76", "7", "65", 3.2]
+  ]) addTraditional(list, key, "altered", "altered-dominant", label, ddRoot, quality, inv, { stability });
+
+  const secondaryTargets = [
+    ["II", II],
+    ["III", III],
+    ["IV", IV],
+    ["V", V],
+    ["VI", VI]
+  ];
+  for (const [target, targetRoot] of secondaryTargets) {
+    const root = transposePc(targetRoot, 7);
+    const leading = transposePc(targetRoot, 11);
+    const group = `secondary-${target}`;
+    for (const [label, quality, inv] of [
+      [`D7/${target}`, "7", ""],
+      [`D65/${target}`, "7", "65"],
+      [`D43/${target}`, "7", "43"],
+      [`D2/${target}`, "7", "2"],
+      [`Dvii7/${target}`, "dim7", ""],
+      [`Dvii65/${target}`, "dim7", "65"],
+      [`Dvii43/${target}`, "dim7", "43"],
+      [`Dvii2/${target}`, "dim7", "2"]
+    ]) addTraditional(list, key, "altered", group, label, label.startsWith("Dvii") ? leading : root, quality, inv, { stability: 2.8 });
+  }
+
+  const byLabel = new Map();
+  for (const item of list) {
+    if (!byLabel.has(`${item.system}:${item.group}:${item.label}`)) byLabel.set(`${item.system}:${item.group}:${item.label}`, item);
+  }
+  return [...byLabel.values()];
+}
+
+function traditionalFit(item, measure, previous, isFinal) {
+  let score = item.stability;
+  for (const [pc, weight] of measure.weightedPcs.entries()) {
+    score += weight * (item.tones.includes(pc) ? 1.35 : -0.55);
+  }
+  if (!previous && item.group === "tonic") score += 2;
+  if (previous?.group === "tonic" && item.group === "subdominant") score += 1.1;
+  if (previous?.group === "subdominant" && ["dominant", "leading", "altered-dominant"].includes(item.group)) score += 1.25;
+  if (["dominant", "leading", "altered-dominant"].includes(previous?.group) && item.group === "tonic") score += 1.8;
+  if (isFinal && item.group === "tonic") score += 3;
+  if (previous && previous.label === item.label) score -= 0.8;
+  for (const progression of TRADITIONAL_PROGRESSIONS) {
+    if (progression.includes(item.label)) score += 0.25;
+  }
+  return score;
+}
+
+function pickTraditionalChord(measure, candidates, previous, isFinal) {
+  const ranked = candidates
+    .map((item) => ({ item, score: traditionalFit(item, measure, previous, isFinal) }))
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.item || candidates[0];
+}
+
+function collapseTraditionalRepeated(chords) {
+  return chords.filter((item, index) => {
+    if (index === 0) return true;
+    if (item.locked) return true;
+    const previous = chords[index - 1].chord;
+    return previous.label !== item.chord.label || previous.group !== item.chord.group;
+  });
+}
+
+function pickAdaptiveTraditionalChords(measure, candidates, previousChord, isFinalMeasure, meterName, locks = {}) {
+  const meter = getMeter(meterName);
+  const lockedTicks = Object.keys(locks)
+    .map((key) => {
+      const [bar, tick] = key.includes(":") ? key.split(":").map(Number) : [Number(key), 0];
+      return bar === measure.bar ? tick : null;
+    })
+    .filter((tick) => tick !== null);
+  const densityOptions = measure.phraseEnding ? ["measure", "half"] : ["measure", "half", "beat"];
+  let best = null;
+
+  for (const density of densityOptions) {
+    const rawStarts = tickStartsForMeter(meterName, density);
+    const noteStartTicks = new Set(measure.notes.map((note) => note.tick));
+    const starts = uniqueSortedTicks([
+      0,
+      ...rawStarts.filter((tick) => tick === 0 || noteStartTicks.has(tick)),
+      ...lockedTicks
+    ], meterName);
+    let localPrevious = previousChord;
+    let total = 0;
+    const picked = [];
+    starts.forEach((start, index) => {
+      const end = starts[index + 1] ?? meter.ticksPerMeasure;
+      const segment = segmentMeasure(measure, start, end);
+      const lock = lockedChordFor(locks, measure.bar, start);
+      const chord = lock
+        ? candidates.find((item) => item.chord === lockedChordName(lock) || item.label === lockedChordLabel(lock)) || candidates[0]
+        : pickTraditionalChord(segment, candidates, localPrevious, isFinalMeasure && index === starts.length - 1);
+      total += traditionalFit(chord, segment, localPrevious, isFinalMeasure && index === starts.length - 1);
+      picked.push({ bar: measure.bar, tick: start, chord, locked: Boolean(lock) });
+      localPrevious = chord;
+    });
+
+    const collapsed = collapseTraditionalRepeated(picked);
+    const extraChordPenalty = measure.phraseEnding ? 1.35 : 0.75;
+    const beatPenalty = density === "beat" ? 0.85 : 0;
+    total -= (collapsed.length - 1) * extraChordPenalty + beatPenalty;
+    if (!best || total > best.score) best = { score: total, chords: collapsed, lastChord: localPrevious };
+  }
+
+  return best || { score: 0, chords: [{ bar: measure.bar, tick: 0, chord: candidates[0] }], lastChord: candidates[0] };
 }
 
 export function buildCandidates(keyId, style = "pop") {
@@ -338,6 +614,16 @@ function lockedChordFor(locks, bar, tick) {
   return locks?.[`${bar}:${tick}`] || (tick === 0 ? locks?.[bar] : undefined);
 }
 
+function lockedChordName(locked) {
+  if (!locked) return undefined;
+  return typeof locked === "string" ? locked : locked.chord;
+}
+
+function lockedChordLabel(locked) {
+  if (!locked) return undefined;
+  return typeof locked === "string" ? locked : (locked.label || locked.chord);
+}
+
 function uniqueSortedTicks(ticks, meterName) {
   const max = getMeter(meterName).ticksPerMeasure;
   return [...new Set(ticks.filter((tick) => tick >= 0 && tick < max))].sort((a, b) => a - b);
@@ -346,7 +632,6 @@ function uniqueSortedTicks(ticks, meterName) {
 function collapseRepeated(chords) {
   return chords.filter((item, index) => {
     if (index === 0) return true;
-    if (item.locked) return true;
     const previous = chords[index - 1].chord;
     const current = item.chord;
     if (current.name === previous.name) return false;
@@ -383,8 +668,9 @@ function pickAdaptiveChords(measure, candidates, previousChord, style, isFinalMe
       const end = starts[index + 1] ?? meter.ticksPerMeasure;
       const segment = segmentMeasure(measure, start, end);
       const locked = lockedChordFor(locks, measure.bar, start);
-      const chord = locked
-        ? findOrCreateChord(locked, candidates, keyId, style)
+      const lockedName = lockedChordName(locked);
+      const chord = lockedName
+        ? findOrCreateChord(lockedName, candidates, keyId, style)
         : pickMeasureChord(segment, candidates, localPrevious, style, isFinalMeasure && index === starts.length - 1);
       total += scoreChord(chord, segment, localPrevious, style, isFinalMeasure && index === starts.length - 1);
       picked.push({ bar: measure.bar, tick: start, chord, locked: Boolean(locked) });
@@ -432,6 +718,107 @@ function parseChordSymbol(symbol) {
   };
 }
 
+function traditionalDegreeMap(key) {
+  const tonicPc = pitchClass(key.tonic);
+  const source = key.mode === "major" ? MAJOR_ROMANS : MINOR_ROMANS;
+  const groupByFunction = {
+    tonic: "tonic",
+    predominant: "subdominant",
+    dominant: "dominant",
+    color: "subdominant"
+  };
+  return source.map((item) => ({
+    pc: transposePc(tonicPc, item.degree),
+    roman: item.roman,
+    group: groupByFunction[item.function] || "tonic"
+  }));
+}
+
+function inversionFigure(parsed) {
+  const intervals = QUALITY_INTERVALS[parsed.quality] || QUALITY_INTERVALS[""];
+  const tones = intervals.map((interval) => transposePc(parsed.rootPc, interval));
+  const bassIndex = tones.indexOf(parsed.bassPc);
+  const hasSeventh = ["7", "maj7", "m7", "dim7", "m7b5", "7sus4", "9", "maj9", "m9", "7b9", "7#9", "13"].includes(parsed.quality);
+  if (bassIndex <= 0) return hasSeventh ? "7" : "";
+  if (bassIndex === 1) return hasSeventh ? "65" : "6";
+  if (bassIndex === 2) return hasSeventh ? "43" : "64";
+  if (bassIndex === 3) return "2";
+  return "";
+}
+
+function traditionalLabelFromChord(chordSymbol, keyId) {
+  const key = keyFromId(keyId);
+  const parsed = parseChordSymbol(chordSymbol);
+  if (!parsed) return { label: chordSymbol, group: "color" };
+  const degree = traditionalDegreeMap(key).find((item) => item.pc === parsed.rootPc);
+  if (!degree) return { label: chordSymbol, group: "color" };
+  return {
+    label: functionalTraditionalLabel(degree.group),
+    group: degree.group
+  };
+}
+
+function functionalTraditionalLabel(group) {
+  if (group === "tonic") return "T";
+  if (group === "subdominant") return "S";
+  if (group === "dominant" || group === "leading" || group === "altered-dominant") return "D";
+  return "T";
+}
+
+function tonicTraditionalChord(keyId) {
+  const key = keyFromId(keyId);
+  const preferFlats = ["F", "Bb", "Eb", "Ab", "Db", "Gb"].includes(key.tonic);
+  const tonicPc = pitchClass(key.tonic);
+  const quality = key.mode === "minor" ? "m" : "";
+  return {
+    chord: chordSymbolFromPcs(tonicPc, quality, tonicPc, preferFlats),
+    label: "T",
+    group: "tonic"
+  };
+}
+
+function translatePopHarmonyToTraditional(popHarmony, keyId, locks = {}) {
+  const traditional = [];
+  let previousGroup = null;
+  for (const item of popHarmony) {
+    const lock = lockedChordFor(locks, item.bar, item.tick);
+    if (lock) {
+      const chord = lockedChordName(lock);
+      const translated = traditionalLabelFromChord(chord, keyId);
+      traditional.push({ bar: item.bar, tick: item.tick, chord, label: translated.label, roman: translated.label, group: translated.group, system: "natural" });
+      previousGroup = translated.group;
+      continue;
+    }
+
+    let translated = traditionalLabelFromChord(item.chord, keyId);
+    let chord = item.chord;
+    if (previousGroup === "dominant" && translated.group === "subdominant") {
+      const tonic = tonicTraditionalChord(keyId);
+      translated = { label: tonic.label, group: tonic.group };
+      chord = tonic.chord;
+    }
+    traditional.push({
+      bar: item.bar,
+      tick: item.tick,
+      chord,
+      label: translated.label,
+      roman: translated.label,
+      system: "natural",
+      group: translated.group
+    });
+    previousGroup = translated.group;
+  }
+  return collapseTraditionalFunctions(traditional);
+}
+
+function collapseTraditionalFunctions(items) {
+  return items.filter((item, index) => {
+    if (index === 0) return true;
+    const previous = items[index - 1];
+    return item.bar !== previous.bar || item.label !== previous.label;
+  });
+}
+
 export function generateHarmony(song, locks = {}) {
   const measures = analyzeMeasures(song);
   const popCandidates = buildCandidates(song.keyId, "pop");
@@ -452,10 +839,12 @@ export function generateHarmony(song, locks = {}) {
     previousJazz = jazzChoice.lastChord;
   });
 
-  return { pop, jazz };
+  const traditional = translatePopHarmonyToTraditional(pop, song.keyId, locks.traditional || {});
+  return { pop, jazz, traditional };
 }
 
 export function getReplacementGroups(song, bar, currentChord, style = "pop") {
+  if (style === "traditional") return getTraditionalReplacementTree(song.keyId);
   const measures = analyzeMeasures(song);
   const measure = measures[bar - 1];
   const candidates = buildCandidates(song.keyId, style === "jazz" ? "jazz" : "pop");
@@ -485,6 +874,45 @@ export function getReplacementGroups(song, bar, currentChord, style = "pop") {
   return groups
     .filter((group) => group.chord)
     .map((group) => ({ id: group.id, label: group.label, chord: group.chord.name, roman: group.chord.roman }));
+}
+
+export function getTraditionalReplacementTree(keyId) {
+  const catalog = buildTraditionalCatalog(keyId);
+  const titleMap = {
+    tonic: "主功能组",
+    subdominant: "下属功能组",
+    dominant: "属功能组",
+    leading: "导功能组",
+    "altered-dominant": "重属与变和弦",
+    "secondary-II": "II级副属和弦",
+    "secondary-III": "III级副属和弦",
+    "secondary-IV": "IV级副属和弦",
+    "secondary-V": "V级副属和弦",
+    "secondary-VI": "VI级副属和弦"
+  };
+  const systemTitles = {
+    natural: "自然音体系",
+    altered: "变化音体系"
+  };
+  return ["natural", "altered"].map((system) => {
+    const groups = [...new Set(catalog.filter((item) => item.system === system).map((item) => item.group))];
+    return {
+      id: system,
+      label: systemTitles[system],
+      children: groups.map((group) => ({
+        id: `${system}-${group}`,
+        label: titleMap[group] || group,
+        children: catalog
+          .filter((item) => item.system === system && item.group === group)
+          .map((item) => ({
+            id: item.id,
+            label: item.label,
+            chord: item.chord,
+            roman: item.label
+          }))
+      }))
+    };
+  });
 }
 
 export function chordPitches(chordSymbol, octave = 3) {

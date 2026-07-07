@@ -34,6 +34,7 @@
           <select id="style">
             <option value="pop">流行版</option>
             <option value="jazz">爵士色彩版</option>
+            <option value="traditional">传统和声</option>
           </select>
         </label>
         <label>
@@ -89,9 +90,8 @@
         <button id="generate" class="primary">输出和弦</button>
         <button id="play" title="播放">播放</button>
         <button id="stop" title="停止">停止</button>
-        <button id="undo" title="撤销">撤销</button>
-        <button id="delete" title="删除最后一个音">删除</button>
-        <button id="clear" title="清空">清空</button>
+        <button id="undo" title="删除最后一个音">删除</button>
+        <button id="delete" title="清空全部">清空</button>
       </header>
 
       <section class="editor-wrap">
@@ -119,8 +119,8 @@
     <script type="module" src="./src/app.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js").catch(() => {});
+        navigator.serviceWorker.getRegistrations?.().then((items) => {
+          items.forEach((item) => item.unregister());
         });
       }
     </script>

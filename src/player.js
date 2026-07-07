@@ -22,6 +22,13 @@ const FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", 
 
 let samplePackPromise = null;
 
+function waitWithTimeout(promise, timeoutMs = 900) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(false), timeoutMs))
+  ]);
+}
+
 export function getInstrumentPreset(name) {
   const presets = {
     clarinet: {
@@ -208,13 +215,13 @@ export class Player {
     return this.context;
   }
 
-  unlockAudio() {
+  async unlockAudio() {
     const context = this.ensureContext();
-    context.resume?.();
+    await context.resume?.();
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = context.createBuffer(1, 1, context.sampleRate);
-    gain.gain.value = 0.0001;
+    gain.gain.value = 0;
     source.connect(gain).connect(context.destination);
     source.start();
     source.stop(context.currentTime + 0.01);
@@ -255,6 +262,12 @@ export class Player {
     await this.preloadSamples(collectSongSampleRequests(song));
   }
 
+  warmPianoSamples(notes) {
+    this.loadSamplePack()
+      .then(() => this.preloadSamples(notes.map((note) => ({ instrument: "piano", note }))))
+      .catch(() => {});
+  }
+
   async preloadSamples(requests) {
     if (typeof window === "undefined") return;
     const context = this.ensureContext();
@@ -266,11 +279,11 @@ export class Player {
       try {
         const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
         const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
-        const response = await fetch(entry, controller ? { signal: controller.signal } : undefined);
+        const response = await fetch(entry.url, controller ? { signal: controller.signal } : undefined);
         if (timer) clearTimeout(timer);
         const arrayBuffer = await response.arrayBuffer();
         const buffer = await context.decodeAudioData(arrayBuffer);
-        this.sampleBuffers.set(key, buffer);
+        this.sampleBuffers.set(key, { buffer, sourceMidi: entry.sourceMidi });
       } catch {
         this.sampleBuffers.set(key, null);
       }
@@ -282,8 +295,17 @@ export class Player {
     const data = instrument && typeof window !== "undefined" ? window.MIDI?.Soundfont?.[instrument] : null;
     if (!data) return null;
     for (const key of sampleKeyCandidates(note)) {
-      if (data[key]) return data[key];
+      if (data[key]) return { url: data[key], sourceMidi: midiFromNote(note) };
     }
+    const targetMidi = midiFromNote(note);
+    let nearest = null;
+    for (const [key, url] of Object.entries(data)) {
+      const sourceMidi = /^-?\d+$/.test(String(key)) ? Number(key) : midiFromNote(String(key));
+      if (!Number.isFinite(sourceMidi)) continue;
+      const distance = Math.abs(sourceMidi - targetMidi);
+      if (!nearest || distance < nearest.distance) nearest = { url, sourceMidi, distance };
+    }
+    if (nearest && nearest.distance <= 12) return nearest;
     return null;
   }
 
@@ -318,30 +340,28 @@ export class Player {
   async preview(note, volume = 1) {
     const previewToken = this.beginPreview();
     if (Number(volume) <= 0) return;
-    this.unlockAudio();
+    await this.unlockAudio();
+    await this.loadSamplePack();
+    await this.preloadSamples([{ instrument: "piano", note }]);
     const context = this.ensureContext();
     if (previewToken !== this.previewToken) return;
     const start = context.currentTime;
     this.playTone(note, start, 0.22, applyVolume(0.09, volume), getInstrumentPreset("piano"), "piano", "preview");
-    this.loadSamplePack()
-      .then(() => this.preloadSamples([{ instrument: "piano", note }]))
-      .catch(() => {});
   }
 
   async previewChord(chordSymbol, volume = 1) {
     const previewToken = this.beginPreview();
     if (Number(volume) <= 0) return;
-    this.unlockAudio();
+    await this.unlockAudio();
+    await this.loadSamplePack();
+    const notes = chordPitches(chordSymbol, 3);
+    await this.preloadSamples(notes.map((note) => ({ instrument: "piano", note })));
     const context = this.ensureContext();
     const start = context.currentTime + 0.02;
-    const notes = chordPitches(chordSymbol, 3);
     if (previewToken !== this.previewToken) return;
     for (const event of createPreviewChordEvents(notes)) {
       this.playTone(event.note, start, event.durationTicks * MEDIUM_SECONDS_PER_TICK, applyVolume(event.gain * 1.25, volume), getInstrumentPreset("piano"), "piano", "preview", { pedal: event.pedal });
     }
-    this.loadSamplePack()
-      .then(() => this.preloadSamples(notes.map((note) => ({ instrument: "piano", note }))))
-      .catch(() => {});
   }
 
   beginPreview() {
@@ -353,8 +373,8 @@ export class Player {
   async playSong(song) {
     this.stop();
     const context = this.ensureContext();
-    this.unlockAudio();
-    this.prepareSong(song).catch(() => {});
+    await this.unlockAudio();
+    await this.prepareSong(song);
     const start = context.currentTime + 0.18;
     const startAbsTick = Math.max(0, Number(song.playStartAbsTick) || 0);
     const tickSeconds = getTickSeconds(song.speed);
@@ -398,6 +418,7 @@ export class Player {
     const release = options.pedal ? Math.max(preset.release || 0.04, PEDAL_RELEASE_SECONDS) : (preset.release || 0.03);
     const sustain = options.pedal ? Math.max(preset.sustain || 0.35, 0.68) : (preset.sustain || 0.35);
     if (this.playSample(note, when, duration, gainValue, { ...preset, release, sustain }, instrumentName, group)) return;
+    if (SAMPLE_INSTRUMENTS[instrumentName]) return;
     const oscillator = context.createOscillator();
     const filter = context.createBiquadFilter();
     const gain = context.createGain();
@@ -416,12 +437,14 @@ export class Player {
   }
 
   playSample(note, when, duration, gainValue, preset, instrumentName, group = "song") {
-    const buffer = this.sampleBuffers.get(`${instrumentName}:${note}`);
-    if (!buffer) return false;
+    const sample = this.sampleBuffers.get(`${instrumentName}:${note}`);
+    if (!sample?.buffer) return false;
     const context = this.ensureContext();
     const source = context.createBufferSource();
     const gain = context.createGain();
-    source.buffer = buffer;
+    source.buffer = sample.buffer;
+    const semitoneShift = midiFromNote(note) - sample.sourceMidi;
+    source.playbackRate.value = Math.pow(2, semitoneShift / 12);
     gain.gain.setValueAtTime(0.0001, when);
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, gainValue * SAMPLE_GAIN_SCALE), when + (preset.attack || 0.01));
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, gainValue * SAMPLE_GAIN_SCALE * (preset.sustain || 0.42)), when + Math.min(duration, preset.decay || duration));

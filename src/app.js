@@ -25,9 +25,12 @@ const state = {
   playStartAbsTick: 0,
   playheadAbsTick: 0,
   melody: [],
-  harmony: { pop: [], jazz: [] },
-  lockedHarmony: { pop: {}, jazz: {} },
+  harmony: { pop: [], jazz: [], traditional: [] },
+  lockedHarmony: { pop: {}, jazz: {}, traditional: {} },
   selectedChord: null,
+  selectedMelodyTarget: null,
+  replacementTrail: [],
+  replacementItems: [],
   message: "选择时值后点击钢琴键输入旋律。"
 };
 
@@ -46,7 +49,7 @@ function init() {
 }
 
 function bindElements() {
-  for (const id of ["key", "meter", "style", "texture", "speed", "melodyTone", "melodyVolume", "harmonyTone", "harmonyVolume", "generate", "play", "stop", "undo", "delete", "clear", "editor", "durations", "keyboard", "dotted", "rest", "message", "replacementPanel", "replacementTitle", "replacementOptions"]) {
+  for (const id of ["key", "meter", "style", "texture", "speed", "melodyTone", "melodyVolume", "harmonyTone", "harmonyVolume", "generate", "play", "stop", "undo", "delete", "editor", "durations", "keyboard", "dotted", "rest", "message", "replacementPanel", "replacementTitle", "replacementOptions"]) {
     els[id] = document.getElementById(id);
   }
 }
@@ -116,13 +119,16 @@ function bindToolbar() {
     stopPlayheadAnimation();
   });
   els.undo.addEventListener("click", undo);
-  els.delete.addEventListener("click", deleteLast);
-  els.clear.addEventListener("click", clearAll);
+  els.delete.addEventListener("click", clearAll);
   els.dotted.addEventListener("click", () => {
     state.dotted = !state.dotted;
     renderDurationState();
   });
   els.rest.addEventListener("click", insertRest);
+  els.replacementPanel.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  els.replacementOptions.addEventListener("click", handleReplacementClick);
   document.addEventListener("click", (event) => {
     if (!els.replacementPanel.contains(event.target) && !event.target.closest(".chord-pill") && !event.target.closest(".note-chip")) {
       closeReplacements();
@@ -162,6 +168,10 @@ function renderKeyboard() {
       setMessage("手机浏览器没有成功启动音频，请再点一次钢琴键试听。");
       render();
     });
+    if (state.selectedMelodyTarget) {
+      replaceSelectedMelodyNote(key.dataset.note);
+      return;
+    }
     insertNote(key.dataset.note);
   });
 }
@@ -173,6 +183,22 @@ function insertNote(note) {
   state.cursorAbsTick += durationTicks;
   clearHarmony();
   setMessage(`${note} 已输入。`);
+  render();
+}
+
+function replaceSelectedMelodyNote(note) {
+  const target = state.selectedMelodyTarget;
+  const event = state.melody.find((item) => item.bar === target.bar && item.tick === target.tick && item.type !== "rest");
+  if (!event) {
+    state.selectedMelodyTarget = null;
+    insertNote(note);
+    return;
+  }
+  event.note = note;
+  clearHarmony();
+  closeReplacements();
+  state.selectedMelodyTarget = null;
+  setMessage(`已替换为 ${note}。`);
   render();
 }
 
@@ -211,16 +237,17 @@ function clearAll() {
   state.playStartAbsTick = 0;
   state.playheadAbsTick = 0;
   state.melody = [];
-  state.harmony = { pop: [], jazz: [] };
-  state.lockedHarmony = { pop: {}, jazz: {} };
+  state.harmony = { pop: [], jazz: [], traditional: [] };
+  state.lockedHarmony = { pop: {}, jazz: {}, traditional: {} };
+  state.selectedMelodyTarget = null;
   closeReplacements();
   setMessage("已清空，可以重新输入。");
   render();
 }
 
 function clearHarmony() {
-  state.harmony = { pop: [], jazz: [] };
-  state.lockedHarmony = { pop: {}, jazz: {} };
+  state.harmony = { pop: [], jazz: [], traditional: [] };
+  state.lockedHarmony = { pop: {}, jazz: {}, traditional: {} };
   closeReplacements();
 }
 
@@ -265,7 +292,7 @@ function renderBar(bar, meter, harmony) {
     <section class="measure" data-bar="${bar}">
       <div class="measure-number">第 ${bar} 小节</div>
       <div class="chord-row">
-        ${chords.length ? chords.map((chord) => `<button class="chord-pill" style="left:${(chord.tick / meter.ticksPerMeasure) * 100}%" data-bar="${bar}" data-tick="${chord.tick}" data-chord="${chord.chord}">${chord.chord}</button>`).join("") : '<span class="chord-placeholder">和弦</span>'}
+        ${chords.length ? chords.map((chord) => `<button class="chord-pill" style="left:${(chord.tick / meter.ticksPerMeasure) * 100}%" data-bar="${bar}" data-tick="${chord.tick}" data-chord="${chord.chord}" data-label="${chord.label || chord.chord}">${chord.label || chord.chord}</button>`).join("") : '<span class="chord-placeholder">和弦</span>'}
       </div>
       <div class="staff">
         ${emptySlots.map((tick) => `<span class="tick ${tick % 4 === 0 ? "beat" : ""} ${cursor.bar === bar && cursor.tick === tick ? "cursor" : ""}" style="left:${(tick / meter.ticksPerMeasure) * 100}%"></span>`).join("")}
@@ -365,12 +392,16 @@ document.addEventListener("click", (event) => {
     setMessage("手机浏览器没有成功启动音频，请先点一下钢琴键。");
     render();
   });
-  openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.chord, "replace");
+  openReplacements(chordButton, Number(chordButton.dataset.bar), Number(chordButton.dataset.tick), chordButton.dataset.label || chordButton.dataset.chord, "replace");
 });
 
 document.addEventListener("click", (event) => {
   const noteButton = event.target.closest(".note-button");
   if (!noteButton) return;
+  state.selectedMelodyTarget = {
+    bar: Number(noteButton.dataset.bar),
+    tick: Number(noteButton.dataset.tick)
+  };
   openReplacements(noteButton, Number(noteButton.dataset.bar), Number(noteButton.dataset.tick), noteButton.dataset.note, "note");
 });
 
@@ -379,28 +410,83 @@ function openReplacements(anchor, bar, tick, target, mode = "replace") {
   state.selectedChord = { bar, tick, chord: currentChord, mode, note: mode === "note" ? target : null };
   const groups = getReplacementGroups(state, bar, currentChord, state.selectedStyle);
   els.replacementTitle.textContent = mode === "note" ? `给 ${target} 配和弦` : `替换 ${currentChord}`;
-  els.replacementOptions.innerHTML = groups.map((group) => `<button data-replacement="${group.chord}"><span>${group.label}</span><strong>${group.chord}</strong></button>`).join("");
-  const rect = anchor.getBoundingClientRect();
-  els.replacementPanel.style.left = `${Math.min(rect.left, window.innerWidth - 230)}px`;
-  els.replacementPanel.style.top = `${rect.bottom + 8}px`;
+  els.replacementPanel.style.left = "12px";
+  els.replacementPanel.style.top = "12px";
   els.replacementPanel.hidden = false;
+  if (state.selectedStyle === "traditional") {
+    renderTraditionalReplacementOptions(groups, []);
+  } else {
+    renderSimpleReplacementOptions(groups);
+  }
+  positionReplacementPanel(anchor);
+}
+
+function positionReplacementPanel(anchor) {
+  const margin = 12;
+  const rect = anchor.getBoundingClientRect();
+  const panelRect = els.replacementPanel.getBoundingClientRect();
+  const left = Math.max(margin, Math.min(rect.left, window.innerWidth - panelRect.width - margin));
+  const top = Math.max(margin, Math.min(rect.bottom + 8, window.innerHeight - panelRect.height - margin));
+  els.replacementPanel.style.left = `${left}px`;
+  els.replacementPanel.style.top = `${top}px`;
+}
+
+function renderSimpleReplacementOptions(groups) {
+  els.replacementOptions.innerHTML = groups.map((group) => `<button data-replacement="${group.chord}" data-label="${group.chord}"><span>${group.label}</span><strong>${group.chord}</strong></button>`).join("");
   els.replacementOptions.querySelectorAll("[data-replacement]").forEach((button) => {
     button.addEventListener("mouseenter", () => player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {}));
     button.addEventListener("focus", () => player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {}));
-    button.addEventListener("click", () => {
-      player.previewChord(button.dataset.replacement, state.harmonyVolume).catch(() => {});
-      applyReplacement(button.dataset.replacement);
-    });
   });
 }
 
-function applyReplacement(chord) {
+function renderTraditionalReplacementOptions(items, trail) {
+  state.replacementItems = items;
+  state.replacementTrail = trail;
+  const back = trail.length ? '<button class="replacement-back" data-back="1">返回上一级</button>' : "";
+  const title = trail.length ? `<div class="replacement-path">${trail.join(" / ")}</div>` : "";
+  els.replacementOptions.innerHTML = title + back + items.map((item, index) => {
+    if (item.children) {
+      return `<button class="replacement-folder" data-folder="${index}"><span>${item.label}</span><strong>进入</strong></button>`;
+    }
+    return `<button data-replacement="${item.chord}" data-label="${item.label}"><span>${item.label}</span><strong>${item.chord}</strong></button>`;
+  }).join("");
+  const backButton = els.replacementOptions.querySelector("[data-back]");
+  if (backButton) {
+    backButton.addEventListener("click", () => {
+      const root = getReplacementGroups(state, state.selectedChord.bar, state.selectedChord.chord, state.selectedStyle);
+      let nextItems = root;
+      const nextTrail = trail.slice(0, -1);
+      for (const label of nextTrail) {
+        nextItems = nextItems.find((item) => item.label === label)?.children || nextItems;
+      }
+      renderTraditionalReplacementOptions(nextItems, nextTrail);
+    });
+  }
+}
+
+function handleReplacementClick(event) {
+  const back = event.target.closest("[data-back]");
+  if (back) return;
+  const folder = event.target.closest("[data-folder]");
+  if (folder) {
+    const item = state.replacementItems[Number(folder.dataset.folder)];
+    if (!item) return;
+    renderTraditionalReplacementOptions(item.children || [], [...state.replacementTrail, item.label]);
+    return;
+  }
+  const replacement = event.target.closest("[data-replacement]");
+  if (!replacement) return;
+  player.previewChord(replacement.dataset.replacement, state.harmonyVolume).catch(() => {});
+  applyReplacement(replacement.dataset.replacement, replacement.dataset.label);
+}
+
+function applyReplacement(chord, label = chord) {
   const selected = state.selectedChord;
   if (!selected) return;
-  state.lockedHarmony[state.selectedStyle][`${selected.bar}:${selected.tick}`] = chord;
+  state.lockedHarmony[state.selectedStyle][`${selected.bar}:${selected.tick}`] = state.selectedStyle === "traditional" ? { chord, label } : chord;
   state.harmony = generateHarmony(state, state.lockedHarmony);
   const subject = selected.mode === "note" ? `${selected.note} 上方` : `第 ${selected.bar} 小节`;
-  setMessage(`${subject}已设为 ${chord}，后续和弦已重新计算。`);
+  setMessage(`${subject}已设为 ${label}，后续和弦已重新计算。`);
   closeReplacements();
   render();
 }
@@ -421,6 +507,7 @@ function closeReplacements() {
   if (!els.replacementPanel) return;
   els.replacementPanel.hidden = true;
   state.selectedChord = null;
+  state.selectedMelodyTarget = null;
 }
 
 function setMessage(message) {
